@@ -3,13 +3,17 @@
 #include <limits>
 #include <random>
 
+int main()
+{
+    std::cout << "Hi";
+    return 0;
+}
+
 SkipList::SkipList() : max_levels(16), probability(0.5)
 {
-    std::cout << "in const" << std::endl;
     head = new SkipNode(std::numeric_limits<int>::min(), "head", max_levels);
     NIL = new SkipNode(std::numeric_limits<int>::max(), "NIL", max_levels);
     head->forward.push_back(NIL);
-    std::cout << NIL->value;
 };
 
 void SkipList::print(std::ostream &os) const
@@ -17,9 +21,9 @@ void SkipList::print(std::ostream &os) const
     auto x = head;
     for (int i = head->forward.size(); i >= 1; --i)
     {
-        while (x->forward[i]->key != std::numeric_limits<int>::max())
+        while (x->forward[i - 1]->key != std::numeric_limits<int>::max())
         {
-            x = x->forward[i]; // traverse to the right
+            x = x->forward[i - 1]; // traverse to the right
             os << "Key: " << x->key << " Value: " << x->value << std::endl;
         }
     }
@@ -31,9 +35,9 @@ std::string *SkipList::search(const int searchKey) const
     // traverse from top of head. Forward size of head is list level
     for (int i = head->forward.size(); i >= 1; --i)
     {
-        while (x->forward[i]->key < searchKey)
+        while (x->forward[i - 1]->key < searchKey)
         {
-            x = x->forward[i]; // traverse to the right
+            x = x->forward[i - 1]; // traverse to the right
         }
     }
 
@@ -62,16 +66,16 @@ void SkipList::insert(const int key, const std::string &val)
     // traverse from top of head. Forward size of head is list level
     for (int i = head->forward.size(); i >= 1; --i)
     {
-        while (x->forward[i]->key < key)
+        while (x->forward[i - 1]->key < key)
         {
-            x = x->forward[i]; // traverse to the right
+            x = x->forward[i - 1]; // traverse to the right
         }
         update[i] = x; // store last forward pointer
     }
-    if (x)
-    {
-        x->value = val; // update value
-    }
+    if (x->forward[0]->key == key)
+	{
+		x->forward[0]->value = val; // update value
+	}
     else
     {
         // insert new node
@@ -88,11 +92,11 @@ void SkipList::insert(const int key, const std::string &val)
         x = new SkipNode(key, val, max_levels);
         for (auto i = 1; i <= new_level; ++i)
         {
-            x->forward[i] = update[i]->forward[i];
-            update[i]->forward[i] = x;
+            x->forward[i - 1] = update[i]->forward[i - 1];
+            update[i]->forward[i - 1] = x;
         }
     }
 
-    delete update[max_levels];
+    delete update;
     return;
 }
