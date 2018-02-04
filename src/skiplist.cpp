@@ -7,16 +7,6 @@ int main()
 {
     SkipList l = SkipList();
     l.print(std::cout);
-    l.insert(1, "Hello");
-    l.insert(2, "Hello");
-    l.insert(3, "Hello");
-    l.insert(4, "Hello");
-    l.insert(5, "Hello");
-    l.insert(6, "Hello");
-    l.insert(7, "Hello");
-    l.insert(8, "Hello");
-    l.insert(9, "Hello");
-    l.print(std::cout);
     return 0;
 }
 
@@ -41,13 +31,10 @@ int SkipList::SkipNode::node_level() const
 void SkipList::print(std::ostream &os) const
 {
     auto x = head;
-    for (int i = head->node_level() - 1; i >= 0; --i)
+    while (x->forward[0]->key != std::numeric_limits<int>::max())
     {
-        while (x->forward[i]->key != std::numeric_limits<int>::max())
-        {
-            x = x->forward[i]; // traverse to the right
-            os << "Key: " << x->key << " Value: " << x->value << " Level: " << x->node_level() << std::endl;
-        }
+        x = x->forward[0]; // traverse to the right
+        os << "Key: " << x->key << " Value: " << x->value << " Level: " << x->node_level() << std::endl;
     }
 }
 
@@ -57,7 +44,7 @@ std::string *SkipList::search(const int searchKey) const
     // traverse from top of head. Forward size of head is list level
     for (int i = head->node_level() - 1; i >= 0; --i)
     {
-        while (x->forward[i]->key < searchKey)
+        while (x->forward[i] && x->forward[i]->key < searchKey)
         {
             x = x->forward[i]; // traverse to the right
         }
@@ -70,8 +57,8 @@ std::string *SkipList::search(const int searchKey) const
 int SkipList::random_level() const
 {
     int new_level = 1;
-    
-    while (((double) rand() / (RAND_MAX)) < probability)
+
+    while (((double)rand() / (RAND_MAX)) < probability)
     {
         ++new_level;
     }
@@ -86,7 +73,7 @@ void SkipList::insert(const int key, const std::string &val)
     // traverse from top of head. Forward size of head is list level
     for (int i = head->node_level() - 1; i >= 0; --i)
     {
-        while (x->forward[i]->key < key)
+        while (x->forward[i] && x->forward[i]->key < key)
         {
             x = x->forward[i]; // traverse to the right
         }
