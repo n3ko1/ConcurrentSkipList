@@ -6,6 +6,11 @@
 int main()
 {
     SkipList l = SkipList();
+    l.insert(1, "Hello");
+    l.insert(2, "world.");
+    l.insert(4, "Whatever.");
+    l.print(std::cout);
+    l.remove(2);
     l.print(std::cout);
     return 0;
 }
@@ -104,6 +109,35 @@ void SkipList::insert(const int key, const std::string &val)
         }
     }
 
+    delete update;
+    return;
+}
+
+void SkipList::remove(const int key)
+{
+    auto x = head;
+    auto update = new SkipNode *[max_levels];
+
+    // traverse from top of head. Forward size of head is list level
+    for (int i = head->node_level() - 1; i >= 0; --i)
+    {
+        while (x->forward[i] && x->forward[i]->key < key)
+        {
+            x = x->forward[i]; // traverse to the right
+        }
+        update[i] = x; // store last forward pointer
+    }
+    x = x->forward[0];
+    if (x->key == key)
+    {
+        for (int i = 0; i != head->node_level() - 1; ++i)
+        {
+            if (update[i]->forward[i] != x)
+                break;
+            update[i]->forward[i] = x->forward[i];
+        }
+        x = nullptr;
+    }
     delete update;
     return;
 }
