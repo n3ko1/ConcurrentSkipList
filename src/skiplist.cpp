@@ -5,25 +5,39 @@
 
 int main()
 {
-    std::cout << "Hi";
+    SkipList l = SkipList();
+    l.print(std::cout);
+    l.insert(1, "Hello");
+    l.print(std::cout);
     return 0;
 }
 
-SkipList::SkipList() : max_levels(16), probability(0.5)
+SkipList::SkipList() : probability(0.5)
 {
     head = new SkipNode(std::numeric_limits<int>::min(), "head", max_levels);
     NIL = new SkipNode(std::numeric_limits<int>::max(), "NIL", max_levels);
-    head->forward.push_back(NIL);
-};
+    head->forward[0] = NIL;
+}
+
+int SkipList::SkipNode::node_level() const
+{
+    int level;
+    for (level = 0; level != max_levels; ++level)
+    {
+        if (forward[level] == nullptr)
+            break;
+    }
+    return level;
+}
 
 void SkipList::print(std::ostream &os) const
 {
     auto x = head;
-    for (int i = head->forward.size(); i >= 1; --i)
+    for (int i = head->node_level() - 1; i >= 0; --i)
     {
-        while (x->forward[i - 1]->key != std::numeric_limits<int>::max())
+        while (x->forward[i]->key != std::numeric_limits<int>::max())
         {
-            x = x->forward[i - 1]; // traverse to the right
+            x = x->forward[i]; // traverse to the right
             os << "Key: " << x->key << " Value: " << x->value << std::endl;
         }
     }
@@ -33,11 +47,11 @@ std::string *SkipList::search(const int searchKey) const
 {
     auto x = head;
     // traverse from top of head. Forward size of head is list level
-    for (int i = head->forward.size(); i >= 1; --i)
+    for (int i = head->node_level() - 1; i >= 0; --i)
     {
-        while (x->forward[i - 1]->key < searchKey)
+        while (x->forward[i]->key < searchKey)
         {
-            x = x->forward[i - 1]; // traverse to the right
+            x = x->forward[i]; // traverse to the right
         }
     }
 
@@ -64,23 +78,23 @@ void SkipList::insert(const int key, const std::string &val)
     auto update = new SkipNode *[max_levels];
 
     // traverse from top of head. Forward size of head is list level
-    for (int i = head->forward.size(); i >= 1; --i)
+    for (int i = head->node_level() - 1; i >= 0; --i)
     {
-        while (x->forward[i - 1]->key < key)
+        while (x->forward[i]->key < key)
         {
-            x = x->forward[i - 1]; // traverse to the right
+            x = x->forward[i]; // traverse to the right
         }
         update[i] = x; // store last forward pointer
     }
     if (x->forward[0]->key == key)
-	{
-		x->forward[0]->value = val; // update value
-	}
+    {
+        x->forward[0]->value = val; // update value
+    }
     else
     {
         // insert new node
         int new_level = random_level();
-        int list_level = head->forward.size();
+        int list_level = head->node_level();
 
         if (new_level > list_level)
         {
