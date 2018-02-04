@@ -8,6 +8,14 @@ int main()
     SkipList l = SkipList();
     l.print(std::cout);
     l.insert(1, "Hello");
+    l.insert(2, "Hello");
+    l.insert(3, "Hello");
+    l.insert(4, "Hello");
+    l.insert(5, "Hello");
+    l.insert(6, "Hello");
+    l.insert(7, "Hello");
+    l.insert(8, "Hello");
+    l.insert(9, "Hello");
     l.print(std::cout);
     return 0;
 }
@@ -38,7 +46,7 @@ void SkipList::print(std::ostream &os) const
         while (x->forward[i]->key != std::numeric_limits<int>::max())
         {
             x = x->forward[i]; // traverse to the right
-            os << "Key: " << x->key << " Value: " << x->value << std::endl;
+            os << "Key: " << x->key << " Value: " << x->value << " Level: " << x->node_level() << std::endl;
         }
     }
 }
@@ -62,10 +70,8 @@ std::string *SkipList::search(const int searchKey) const
 int SkipList::random_level() const
 {
     int new_level = 1;
-    std::random_device rd;  //Will be used to obtain a seed for the random number engine
-    std::mt19937 gen(rd()); //Standard mersenne_twister_engine seeded with rd()
-    std::uniform_real_distribution<float> dis(0.0, 1.0);
-    while (dis(gen) < probability)
+    
+    while (((double) rand() / (RAND_MAX)) < probability)
     {
         ++new_level;
     }
@@ -98,16 +104,16 @@ void SkipList::insert(const int key, const std::string &val)
 
         if (new_level > list_level)
         {
-            for (auto i = list_level + 1; i <= new_level; ++i)
+            for (auto i = list_level; i < new_level; ++i)
             {
                 update[i] = head;
             }
         }
         x = new SkipNode(key, val, max_levels);
-        for (auto i = 1; i <= new_level; ++i)
+        for (auto i = 0; i < new_level; ++i)
         {
-            x->forward[i - 1] = update[i]->forward[i - 1];
-            update[i]->forward[i - 1] = x;
+            x->forward[i] = update[i]->forward[i];
+            update[i]->forward[i] = x;
         }
     }
 
