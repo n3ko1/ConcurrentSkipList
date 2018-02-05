@@ -1,7 +1,6 @@
 #ifndef SKIPLIST_H
 #define SKIPLIST_H
 
-#include <vector>
 #include <string>
 
 class SkipList

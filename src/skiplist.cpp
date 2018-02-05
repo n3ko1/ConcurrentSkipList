@@ -3,18 +3,6 @@
 #include <limits>
 #include <random>
 
-int main()
-{
-    SkipList l = SkipList();
-    l.insert(1, "Hello");
-    l.insert(2, "world.");
-    l.insert(4, "Whatever.");
-    l.print(std::cout);
-    l.remove(2);
-    l.print(std::cout);
-    return 0;
-}
-
 SkipList::SkipList() : probability(0.5)
 {
     head = new SkipNode(std::numeric_limits<int>::min(), "head", max_levels);

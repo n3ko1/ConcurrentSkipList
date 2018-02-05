@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "*.xsjs": "javascript",
+        "*.xsjslib": "javascript",
+        "vector": "cpp"
+    }
+}
