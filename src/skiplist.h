@@ -6,24 +6,30 @@
 #include <limits>
 #include <random>
 
-template <typename ValueType>
+#define SKIPLIST_TEMPLATE_ARGS \
+  template <typename KeyType, typename ValueType>
+
+#define SKIPLIST_TYPE \
+  SkipList<KeyType, ValueType>
+
+SKIPLIST_TEMPLATE_ARGS
 class SkipList
 {
 public:
   SkipList();
   ~SkipList(){};
 
-  ValueType *search(const int searchKey) const;
-  void insert(const int key, const ValueType &val);
-  void remove(const int key);
+  ValueType *search(const KeyType searchKey) const;
+  void insert(const KeyType key, const ValueType &val);
+  void remove(const KeyType key);
 
   void print(std::ostream &os) const;
 
 private:
   struct SkipNode
   {
-    SkipNode(const int k, const ValueType &v, const int forward_size) : key(k), value(v) { intialize_forward(forward_size); }
-    SkipNode(const int k, const int forward_size) : key(k) { intialize_forward(forward_size); }
+    SkipNode(const KeyType k, const ValueType &v, const int forward_size) : key(k), value(v) { intialize_forward(forward_size); }
+    SkipNode(const KeyType k, const int forward_size) : key(k) { intialize_forward(forward_size); }
     ~SkipNode() { delete forward; }
 
     void intialize_forward(const int forward_size)
@@ -35,7 +41,7 @@ private:
       }
     }
 
-    int key;
+    KeyType key;
     ValueType value;
 
     // Array of forward nodes
@@ -45,7 +51,7 @@ private:
   };
 
   int random_level() const;
-  SkipNode *find_node(const int searchKey) const;
+  SkipNode *find_node(const KeyType searchKey) const;
   SkipNode *head;
   SkipNode *NIL;
 
@@ -53,16 +59,16 @@ private:
   const float probability;
 };
 
-template <typename ValueType>
-SkipList<ValueType>::SkipList() : probability(0.5)
+SKIPLIST_TEMPLATE_ARGS
+SKIPLIST_TYPE::SkipList() : probability(0.5)
 {
-  head = new SkipNode(std::numeric_limits<int>::min(), max_levels);
-  NIL = new SkipNode(std::numeric_limits<int>::max(), max_levels);
+  head = new SkipNode(std::numeric_limits<KeyType>::min(), max_levels);
+  NIL = new SkipNode(std::numeric_limits<KeyType>::max(), max_levels);
   head->forward[0] = NIL;
 }
 
-template <typename ValueType>
-int SkipList<ValueType>::SkipNode::node_level() const
+SKIPLIST_TEMPLATE_ARGS
+int SKIPLIST_TYPE::SkipNode::node_level() const
 {
   int level;
   for (level = 0; level != max_levels; ++level)
@@ -73,19 +79,19 @@ int SkipList<ValueType>::SkipNode::node_level() const
   return level;
 }
 
-template <typename ValueType>
-void SkipList<ValueType>::print(std::ostream &os) const
+SKIPLIST_TEMPLATE_ARGS
+void SKIPLIST_TYPE::print(std::ostream &os) const
 {
   auto x = head;
-  while (x->forward[0]->key != std::numeric_limits<int>::max())
+  while (x->forward[0]->key != std::numeric_limits<KeyType>::max())
   {
     x = x->forward[0]; // traverse to the right
     os << "Key: " << x->key << " Value: " << x->value << " Level: " << x->node_level() << std::endl;
   }
 }
 
-template <typename ValueType>
-ValueType *SkipList<ValueType>::search(const int searchKey) const
+SKIPLIST_TEMPLATE_ARGS
+ValueType *SKIPLIST_TYPE::search(const KeyType searchKey) const
 {
   auto x = head;
   // traverse from top of head. Forward size of head is list level
@@ -101,8 +107,8 @@ ValueType *SkipList<ValueType>::search(const int searchKey) const
   return (x->key == searchKey ? &x->value : nullptr);
 }
 
-template <typename ValueType>
-int SkipList<ValueType>::random_level() const
+SKIPLIST_TEMPLATE_ARGS
+int SKIPLIST_TYPE::random_level() const
 {
   int new_level = 1;
 
@@ -113,8 +119,8 @@ int SkipList<ValueType>::random_level() const
   return (new_level > max_levels ? max_levels : new_level);
 }
 
-template <typename ValueType>
-void SkipList<ValueType>::insert(const int key, const ValueType &val)
+SKIPLIST_TEMPLATE_ARGS
+void SKIPLIST_TYPE::insert(const KeyType key, const ValueType &val)
 {
   auto x = head;
   auto update = new SkipNode *[max_levels];
@@ -157,8 +163,8 @@ void SkipList<ValueType>::insert(const int key, const ValueType &val)
   return;
 }
 
-template <typename ValueType>
-void SkipList<ValueType>::remove(const int key)
+SKIPLIST_TEMPLATE_ARGS
+void SKIPLIST_TYPE::remove(const KeyType key)
 {
   auto x = head;
   auto update = new SkipNode *[max_levels];
