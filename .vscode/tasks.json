@@ -13,7 +13,6 @@
                 "-march=x86-64",
                 "-g",
                 "src/main.cpp",
-                "src/skiplist.cpp",
                 "-o",
                 "bin/skiplist.exe"
             ],
