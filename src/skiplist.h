@@ -21,14 +21,14 @@ private:
     MarkableReference() : val(nullptr), marked(false) {}
     MarkableReference(T *value, bool mark) : val(value), marked(mark) {}
 
-    bool operator==(const MarkableReference<T> &other)
+    bool operator==(const MarkableReference &other)
     {
       return (val == other.val && marked == other.marked);
     }
   };
 
   // atomically holds marked reference
-  std::atomic<MarkableReference<T> *> marked_ref;
+  std::atomic<MarkableReference *> marked_ref;
 
 public:
   AtomicMarkableReference()
@@ -41,23 +41,23 @@ public:
   }
   T *get_reference()
   {
-    return markedNext.load()->next;
+    return marked_ref.load()->next;
   }
 
   // Stores the value of this references marked flag in reference
   T *get(OUT_PARAM bool &mark)
   {
-    MarkableReference<T> *temp = marked_ref.load();
+    MarkableReference *temp = marked_ref.load();
     mark = temp->marked;
     return temp->val;
   }
 
   void set(T *value, bool mark)
   {
-    MarkableReference<T> *curr = marked_ref.load();
+    MarkableReference *curr = marked_ref.load();
     if (value != curr->val || mark != curr->marked)
     {
-      marked_ref.store(new MarkableReference<T>(value, mark));
+      marked_ref.store(new MarkableReference(value, mark));
     }
   }
 
@@ -66,10 +66,10 @@ public:
   // returns true on success
   bool compare_and_swap(T *expected_value, T *new_value, bool expected_mark, bool new_mark)
   {
-    MarkableReference<T> *curr = marked_ref.load();
+    MarkableReference *curr = marked_ref.load();
     return (expected_value == curr->val && expected_mark == curr->marked &&
-            ((new_value == curr->val && newBool == curr->marked) ||                                     // if already equal, return true by shortcircuiting
-             marked_ref.compare_exchange_strong(curr, new MarkableReference<T>(new_value, new_mark)))); // otherwise, attempt compare and swap
+            ((new_value == curr->val && new_mark == curr->marked) ||                                 // if already equal, return true by shortcircuiting
+             marked_ref.compare_exchange_strong(curr, new MarkableReference(new_value, new_mark)))); // otherwise, attempt compare and swap
   }
 };
 
@@ -83,16 +83,6 @@ public:
 SKIPLIST_TEMPLATE_ARGS
 class SkipList
 {
-public:
-  SkipList();
-  ~SkipList(){};
-
-  ValueType *search(const KeyType search_key) const;
-  void insert(const KeyType key, const ValueType &val);
-  void remove(const KeyType key);
-
-  void print(std::ostream &os) const;
-
 private:
   struct SkipNode
   {
@@ -121,13 +111,25 @@ private:
     int top_level;
 
     // Array of atomic forward nodes
-    AtomicMarkableReference<SkipNode> **forward;
+    AtomicMarkableReference<SkipNode> *forward;
 
     int node_level() const;
   };
 
+public:
+  SkipList();
+  ~SkipList(){};
+
+  ValueType *search(const KeyType search_key) const;
+  bool find(const KeyType search_key, SkipNode **preds, SkipNode **succs); // not const, will delete marked nodes
+
+  void insert(const KeyType key, const ValueType &val);
+  void remove(const KeyType key);
+
+  void print(std::ostream &os) const;
+
+private:
   int random_level() const;
-  SkipNode *find_node(const KeyType search_key) const;
   SkipNode *head;
   SkipNode *NIL;
 
@@ -170,7 +172,7 @@ void SKIPLIST_TYPE::print(std::ostream &os) const
 }
 
 SKIPLIST_TEMPLATE_ARGS
-bool find(const KeyType search_key, SkipNode *preds, SkipNode *succs)
+bool SKIPLIST_TYPE::find(const KeyType search_key, SkipNode **preds, SkipNode **succs)
 {
   bool marked = false;
   bool snip;
@@ -178,39 +180,36 @@ bool find(const KeyType search_key, SkipNode *preds, SkipNode *succs)
   SkipNode *pred, curr, succ;
 
 RETRY:
-  while (true)
+  pred = head;
+  for (auto level = max_levels; level >= 0; --level)
   {
-    pred = head;
-    for (auto level = max_levels; level >= 0; --level)
+    curr = pred->forward[level].get_reference();
+    while (true)
     {
-      curr = pred->forward[level].get_reference();
-      while (true)
+      // delete marked nodes
+      succ = curr->forward[level].get(marked);
+      while (marked)
       {
-        // delete marked nodes
+        snip = pred->forward[level].compare_and_swap(curr, succ, false, false);
+        if (!snip)
+          goto RETRY; // CAS failed, try again
+        curr = pred->forward[level].get_reference();
         succ = curr->forward[level].get(marked);
-        while (marked)
-        {
-          snip = pred->forward[level].compare_and_swap(curr, succ, false, false);
-          if (!snip)
-            goto RETRY; // CAS failed, try again
-          curr = pred->forward[level].get_reference();
-          succ = curr->forward[level].get(marked);
-        }
-        if (curr->key < search_key)
-        {
-          pred = curr;
-          curr = succ;
-        }
-        else
-        {
-          break;
-        }
       }
-      preds[level] = pred;
-      succs[level] = curr;
+      if (curr->key < search_key)
+      {
+        pred = curr;
+        curr = succ;
+      }
+      else
+      {
+        break;
+      }
     }
-    return (curr.key == key);
+    preds[level] = pred;
+    succs[level] = curr;
   }
+  return (curr.key == search_key);
 }
 
 SKIPLIST_TEMPLATE_ARGS
@@ -233,45 +232,46 @@ ValueType *SKIPLIST_TYPE::search(const KeyType search_key) const
 SKIPLIST_TEMPLATE_ARGS
 void SKIPLIST_TYPE::insert(const KeyType key, const ValueType &val)
 {
-  auto x = head;
-  auto update = new SkipNode *[max_levels];
-
-  // traverse from top of head. Forward size of head is list level
-  for (int i = head->node_level() - 1; i >= 0; --i)
+  int top_level = random_level();
+  auto preds = new SkipNode *[max_levels];
+  auto succs = new SkipNode *[max_levels];
+  while (true)
   {
-    while (x->forward[i] && x->forward[i]->key < key)
+    bool found = find(key, preds, succs);
+    if (found)
     {
-      x = x->forward[i]; // traverse to the right
+      // TODO support multi-value
+      return;
     }
-    update[i] = x; // store last forward pointer
-  }
-  if (x->forward[0]->key == key)
-  {
-    x->forward[0]->value = val; // update value
-  }
-  else
-  {
-    // insert new node
-    int new_level = random_level();
-    int list_level = head->node_level();
-
-    if (new_level > list_level)
+    else
     {
-      for (auto i = list_level; i < new_level; ++i)
+      auto new_node = new SkipNode(key, val, top_level);
+      for (auto level = 0; level <= top_level; ++level)
       {
-        update[i] = head;
+        auto succ = succs[level];
+        new_node->forward[level].set(succ, false);
       }
-    }
-    x = new SkipNode(key, val, max_levels);
-    for (auto i = 0; i < new_level; ++i)
-    {
-      x->forward[i] = update[i]->forward[i];
-      update[i]->forward[i] = x;
+      auto pred = preds[0];
+      auto succ = preds[0];
+      new_node->forward[0].set(succ, false);
+      if (!pred->forward[0].compare_and_swap(succ, new_node, false, false))
+      {
+        continue; // CAS failed, try again
+      }
+      for (auto level = 1; level <= top_level; ++level)
+      {
+        while (true)
+        {
+          pred = preds[level];
+          succ = succs[level];
+          if (pred->forward[level].compare_and_swap(succ, new_node, false, false))
+            break;
+          find(key, preds, succs); // CAS failed for upper level, search node to update preds and succs
+        }
+      }
+      return;
     }
   }
-
-  delete update;
-  return;
 }
 
 SKIPLIST_TEMPLATE_ARGS
