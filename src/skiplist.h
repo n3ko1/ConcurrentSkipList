@@ -6,6 +6,7 @@
 #include <limits>
 #include <random>
 #include <atomic>
+#include <cstdint>
 
 #define OUT_PARAM
 
@@ -71,12 +72,12 @@ struct AtomicMarkableReference
     return temp.getRef();
   }
 
-  void set(T *value, bool mark)
+  void set(T value, bool mark)
   {
     MarkableReference<T> curr = ref.load();
-    if (value != curr.getRef() || mark != curr.getRef())
+    if (value != curr.getRef() || mark != curr.getMark())
     {
-      ref.store(new MarkableReference<T>(value, mark));
+      ref.store(MarkableReference<T>(value, mark));
     }
   }
 
@@ -103,22 +104,27 @@ class SkipList
 private:
   struct SkipNode
   {
+    // Constructor for standard nodes
     SkipNode(const KeyType k, const ValueType &v, const int forward_size) : key(k), value(v), top_level(forward_size)
     {
-      intialize_forward(forward_size);
+      intialize_forward(forward_size, nullptr);
     }
-    SkipNode(const KeyType k, const int forward_size) : key(k), value(nullptr), top_level(forward_size)
+
+    // Constructor for sentinel nodes head and NIL
+    SkipNode(const KeyType k, const int forward_size, SkipNode *forward_target) : key(k), value(nullptr), top_level(forward_size)
     {
-      intialize_forward(forward_size);
+      intialize_forward(forward_size, forward_target);
     }
     ~SkipNode() { delete forward; }
 
-    void intialize_forward(const int forward_size)
+    void intialize_forward(const int forward_size, SkipNode *forward_target)
     {
-      forward = new AtomicMarkableReference<SkipNode> *[forward_size];
+      forward.reserve(forward_size);
       for (auto i = 0; i != forward_size; ++i)
       {
-        forward[i] = AtomicMarkableReference<SkipNode>(nullptr, false);
+        std::atomic<MarkableReference<SubTest *>> temp{
+            MarkableReference<SkipNode *>(forward_target, false)};
+        forward.push_back(temp);
       }
     }
 
@@ -127,8 +133,8 @@ private:
 
     int top_level;
 
-    // Array of atomic forward nodes
-    AtomicMarkableReference<SkipNode> *forward;
+    // Vector of atomic, markable (logical delete) forward nodes
+    std::vector<AtomicMarkableReference<SkipNode *>> forward;
 
     int node_level() const;
   };
@@ -157,12 +163,8 @@ private:
 SKIPLIST_TEMPLATE_ARGS
 SKIPLIST_TYPE::SkipList() : probability(0.5)
 {
-  head = new SkipNode(std::numeric_limits<KeyType>::min(), max_levels);
-  NIL = new SkipNode(std::numeric_limits<KeyType>::max(), max_levels);
-  for (auto i = 0; i != max_levels; ++i)
-  {
-    head->forward[i] = AtomicMarkableReference<SkipNode>(NIL, false);
-  }
+  NIL = new SkipNode(std::numeric_limits<KeyType>::max(), max_levels, nullptr);
+  head = new SkipNode(std::numeric_limits<KeyType>::min(), max_levels, NIL);
 }
 
 SKIPLIST_TEMPLATE_ARGS
