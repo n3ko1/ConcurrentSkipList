@@ -39,7 +39,7 @@ struct AtomicMarkableReference
   T *get_reference() { return ref.load()->val; }
 
   // Stores the value of this references marked flag in reference
-  T *get(bool &mark)
+  T *get(OUT_PARAM bool &mark)
   {
     MarkableReference<T> *temp = ref.load();
     mark = temp->marked;
