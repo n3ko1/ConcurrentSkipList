@@ -167,6 +167,7 @@ SKIPLIST_TYPE::SkipList() : probability(0.5)
   head = new SkipNode(std::numeric_limits<KeyType>::min(), max_levels, NIL);
 }
 
+// TODO optimize http://ticki.github.io/blog/skip-lists-done-right/
 SKIPLIST_TEMPLATE_ARGS
 int SKIPLIST_TYPE::random_level() const
 {
@@ -183,10 +184,10 @@ SKIPLIST_TEMPLATE_ARGS
 void SKIPLIST_TYPE::print(std::ostream &os) const
 {
   auto x = head;
-  while (x->forward[0]->key != std::numeric_limits<KeyType>::max())
+  while (x->forward[0].get_reference()->key != std::numeric_limits<KeyType>::max())
   {
     x = x->forward[0]; // traverse to the right
-    os << "Key: " << x->key << " Value: " << x->value << " Level: " << x->node_level() << std::endl;
+    os << "Key: " << x.get_reference()->key << " Value: " << x.get_reference()->value << " Level: " << x.get_reference()->node_level() << std::endl;
   }
 }
 
