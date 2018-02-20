@@ -88,7 +88,7 @@ struct AtomicMarkableReference
   {
     MarkableReference<T> curr = ref.load();
     return (expected_value == curr.getRef() && expected_mark == curr.getMark() &&
-            ((new_value == curr.getRef() && new_mark == curr.getMark()) ||                       // if already equal, return true by shortcircuiting
+            ((new_value == curr.getRef() && new_mark == curr.getMark()) ||                   // if already equal, return true by shortcircuiting
              ref.compare_exchange_strong(curr, MarkableReference<T>(new_value, new_mark)))); // otherwise, attempt compare and swap
   }
 };
@@ -156,6 +156,7 @@ public:
   void remove(const KeyType key);
 
   void print(std::ostream &os) const;
+  uint32_t size() const;
 
 private:
   int random_level() const;
@@ -195,6 +196,19 @@ void SKIPLIST_TYPE::print(std::ostream &os) const
     x = x->forward[0].get_reference(); // traverse to the right
     os << "Key: " << x->key << " Value: " << x->value << " Level: " << x->top_level << std::endl;
   }
+}
+
+SKIPLIST_TEMPLATE_ARGS
+uint32_t SKIPLIST_TYPE::size() const
+{
+  auto x = head;
+  uint32_t size = 0;
+  while (x->forward[0].get_reference()->key != std::numeric_limits<KeyType>::max())
+  {
+    x = x->forward[0].get_reference(); // traverse to the right
+    ++size;
+  }
+  return size;
 }
 
 SKIPLIST_TEMPLATE_ARGS
@@ -267,6 +281,7 @@ void SKIPLIST_TYPE::insert(const KeyType key, const ValueType &val)
     if (found)
     {
       // TODO support multi-value
+      std::cout << "DUPLICATE!";
       return;
     }
     else
