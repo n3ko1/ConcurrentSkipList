@@ -33,3 +33,5 @@
 
 # vscode
 .vscode/settings.json
+
+src/mingw.thread.h
