@@ -10,34 +10,13 @@
 
 #define OUT_PARAM
 
-// https://stackoverflow.com/a/40251680
 template <class T>
-class MarkableReference
+struct MarkableReference
 {
-private:
-  uintptr_t val = 0;
-  static const uintptr_t mask = 1;
-
-public:
-  MarkableReference(T ref = NULL, bool mark = false)
-  {
-    val = ((uintptr_t)ref & ~mask) | (mark ? 1 : 0);
-  }
-  T getRef(void) { return (T)(val & ~mask); }
-  bool getMark(void) { return (val & mask); }
-
-  T get(bool *marked)
-  {
-    *marked = val & mask;
-    return (T)(val & ~mask);
-  }
-
-  T operator->() { return (T)(val & ~mask); }
-
-  // Access contained value
-  // Returns the stored value by val.
-  // This is a type-cast operator
-  operator T() const { return (T)(val & ~mask); }
+  T *val = nullptr;
+  bool marked = false;
+  MarkableReference(MarkableReference &other) : val(other.val), marked(other.marked) {}
+  MarkableReference(T *value, bool mark) : val(value), marked(mark) {}
 };
 
 // Atomic wrapper for MarkableReference type, implementing copy constructor for use in container types
@@ -45,51 +24,46 @@ public:
 template <typename T>
 struct AtomicMarkableReference
 {
-  std::atomic<MarkableReference<T>> ref;
+  std::atomic<MarkableReference<T> *> ref;
 
-  AtomicMarkableReference() : ref() {}
-
-  AtomicMarkableReference(const std::atomic<MarkableReference<T>> &a)
-      : ref(a.load()) {}
-
-  AtomicMarkableReference(const AtomicMarkableReference &other)
-      : ref(other.ref.load()) {}
-
-  AtomicMarkableReference &operator=(const AtomicMarkableReference &other)
+  AtomicMarkableReference()
   {
-    ref.store(other.ref.load());
+    ref.store(new MarkableReference<T>(nullptr, false));
   }
 
-  MarkableReference<T> get_markable_reference() { return ref.load(); }
+  AtomicMarkableReference(T *val, bool marked)
+  {
+    ref.store(new MarkableReference<T>(val, marked));
+  }
 
-  T get_reference() { return ref.load().getRef(); }
+  T *get_reference() { return ref.load()->val; }
 
   // Stores the value of this references marked flag in reference
-  T get(bool &mark)
+  T *get(bool &mark)
   {
-    MarkableReference<T> temp = ref.load();
-    mark = temp.getMark();
-    return temp.getRef();
+    MarkableReference<T> *temp = ref.load();
+    mark = temp->marked;
+    return temp->val;
   }
 
-  void set(T value, bool mark)
+  void set(T *value, bool mark)
   {
-    MarkableReference<T> curr = ref.load();
-    if (value != curr.getRef() || mark != curr.getMark())
+    MarkableReference<T> *curr = ref.load();
+    if (value != curr->val || mark != curr->marked)
     {
-      ref.store(MarkableReference<T>(value, mark));
+      ref.store(new MarkableReference<T>(value, mark));
     }
   }
 
   // Atomically sets the value of both the reference and mark to the given
   // update values if the current reference is equal to the expected reference
   // and the current mark is equal to the expected mark. returns true on success
-  bool compare_and_swap(T expected_value, bool expected_mark, T new_value, bool new_mark)
+  bool compare_and_swap(T *expected_value, bool expected_mark, T *new_value, bool new_mark)
   {
-    MarkableReference<T> curr = ref.load();
-    return (expected_value == curr.getRef() && expected_mark == curr.getMark() &&
-            ((new_value == curr.getRef() && new_mark == curr.getMark()) ||                   // if already equal, return true by shortcircuiting
-             ref.compare_exchange_strong(curr, MarkableReference<T>(new_value, new_mark)))); // otherwise, attempt compare and swap
+    MarkableReference<T> *curr = ref.load();
+    return (expected_value == curr->val && expected_mark == curr->marked &&
+            ((new_value == curr->val && new_mark == curr->marked) ||                             // if already equal, return true by shortcircuiting
+             ref.compare_exchange_strong(curr, new MarkableReference<T>(new_value, new_mark)))); // otherwise, attempt compare and swap
   }
 };
 
@@ -121,12 +95,10 @@ private:
 
     void intialize_forward(const int forward_size, SkipNode *forward_target)
     {
-      forward.reserve(forward_size);
+      forward = std::vector<AtomicMarkableReference<SkipNode>>(forward_size);
       for (auto i = 0; i != forward_size; ++i)
       {
-        AtomicMarkableReference<SkipNode *> temp{
-            MarkableReference<SkipNode *>(forward_target, false)};
-        forward.push_back(temp);
+        forward[i].set(forward_target, false);
       }
     }
 
@@ -136,7 +108,7 @@ private:
     int top_level;
 
     // Vector of atomic, markable (logical delete) forward nodes
-    std::vector<AtomicMarkableReference<SkipNode *>> forward;
+    std::vector<AtomicMarkableReference<SkipNode>> forward;
 
     int node_level() const;
   };
@@ -280,8 +252,8 @@ void SKIPLIST_TYPE::insert(const KeyType key, const ValueType &val)
     bool found = find(key, preds, succs);
     if (found)
     {
-      // TODO support multi-value
-      std::cout << "DUPLICATE!";
+      delete preds;
+      delete succs;
       return;
     }
     else
@@ -295,8 +267,9 @@ void SKIPLIST_TYPE::insert(const KeyType key, const ValueType &val)
       auto pred = preds[0];
       auto succ = succs[0];
       new_node->forward[0].set(succ, false);
-      if (!pred->forward[0].compare_and_swap(pred->forward[0].get_reference(), false, new_node, false))
+      if (!pred->forward[0].compare_and_swap(succ, false, new_node, false))
       {
+        delete new_node;
         continue; // CAS failed, try again
       }
       for (auto level = 0; level < top_level; ++level)

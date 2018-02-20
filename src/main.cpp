@@ -3,8 +3,8 @@
 #include <iostream>
 #include <assert.h>
 
-constexpr int THREAD_COUNT = 4;
-constexpr int ROUNDS = 10;
+constexpr int THREAD_COUNT = 32;
+constexpr int ROUNDS = 100;
 
 std::atomic<int> id(0);
 
@@ -18,7 +18,7 @@ void run(SkipList<int, std::string> &l)
     l.insert(create_id(), "");
 }
 
-int main()
+void run_threaded_test()
 {
     for (auto x = 0; x != ROUNDS; ++x)
     {
@@ -45,5 +45,24 @@ int main()
         std::cout << std::endl
                   << l.size();
     }
+}
+
+void run_simple_test()
+{
+
+    SkipList<int, std::string> l = SkipList<int, std::string>();
+    l.insert(1, "Hello");
+    l.insert(2, "World.");
+    l.insert(3, "This");
+    l.insert(4, "is");
+    l.insert(5, "a");
+    l.insert(6, "test");
+    l.print(std::cout);
+}
+
+int main()
+{
+    run_simple_test();
+    run_threaded_test();
     return 0;
 }
