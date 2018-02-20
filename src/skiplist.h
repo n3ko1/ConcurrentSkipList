@@ -9,67 +9,84 @@
 
 #define OUT_PARAM
 
+// https://stackoverflow.com/a/40251680
 template <class T>
-class AtomicMarkableReference
+class MarkableReference
 {
 private:
-  struct MarkableReference
-  {
-    T *val;
-    bool marked;
-
-    MarkableReference() : val(nullptr), marked(false) {}
-    MarkableReference(T *value, bool mark) : val(value), marked(mark) {}
-
-    bool operator==(const MarkableReference &other)
-    {
-      return (val == other.val && marked == other.marked);
-    }
-  };
-
-  // atomically holds marked reference
-  std::atomic<MarkableReference *> marked_ref;
+  uintptr_t val = 0;
+  static const uintptr_t mask = 1;
 
 public:
-  AtomicMarkableReference()
+  MarkableReference(T ref = NULL, bool mark = false)
   {
-    marked_ref.store(new MarkableReference());
+    val = ((uintptr_t)ref & ~mask) | (mark ? 1 : 0);
   }
-  AtomicMarkableReference(T *value, bool mark)
+  T getRef(void) { return (T)(val & ~mask); }
+  bool getMark(void) { return (val & mask); }
+
+  T get(bool *marked)
   {
-    marked_ref.store(new MarkableReference(value, mark));
-  }
-  T *get_reference()
-  {
-    return marked_ref.load()->next;
+    *marked = val & mask;
+    return (T)(val & ~mask);
   }
 
-  // Stores the value of this references marked flag in reference
-  T *get(OUT_PARAM bool &mark)
+  T operator->() { return (T)(val & ~mask); }
+
+  // Access contained value
+  // Returns the stored value by val.
+  // This is a type-cast operator
+  operator T() const { return (T)(val & ~mask); }
+};
+
+// Atomic wrapper for MarkableReference type, implementing copy constructor for use in container types
+// ATTENTION: copy construction is NOT atomic!
+template <typename T>
+struct AtomicMarkableReference
+{
+  std::atomic<MarkableReference<T>> ref;
+
+  AtomicMarkableReference() : ref() {}
+
+  AtomicMarkableReference(const std::atomic<MarkableReference<T>> &a)
+      : ref(a.load()) {}
+
+  AtomicMarkableReference(const AtomicMarkableReference &other)
+      : ref(other.ref.load()) {}
+
+  AtomicMarkableReference &operator=(const AtomicMarkableReference &other)
   {
-    MarkableReference *temp = marked_ref.load();
-    mark = temp->marked;
-    return temp->val;
+    ref.store(other.ref.load());
+  }
+
+  MarkableReference<T> get_markable_reference() { return ref.load(); }
+
+  T get_reference() { return ref.load().getRef(); }
+
+  // Stores the value of this references marked flag in reference
+  T get(bool &mark)
+  {
+    MarkableReference<T> temp = ref.load();
+    mark = temp.getMark();
+    return temp.getRef();
   }
 
   void set(T *value, bool mark)
   {
-    MarkableReference *curr = marked_ref.load();
-    if (value != curr->val || mark != curr->marked)
+    MarkableReference<T> curr = ref.load();
+    if (value != curr.getRef() || mark != curr.getRef())
     {
-      marked_ref.store(new MarkableReference(value, mark));
+      ref.store(new MarkableReference<T>(value, mark));
     }
   }
 
-  // Atomically sets the value of both the reference and mark to the given update values
-  // if the current reference is equal to the expected reference and the current mark is equal to the expected mark.
-  // returns true on success
-  bool compare_and_swap(T *expected_value, T *new_value, bool expected_mark, bool new_mark)
+  // Atomically sets the value of both the reference and mark to the given
+  // update values if the current reference is equal to the expected reference
+  // and the current mark is equal to the expected mark. returns true on success
+  bool compare_and_swap(MarkableReference<T> &expected_ref,
+                        MarkableReference<T> new_ref)
   {
-    MarkableReference *curr = marked_ref.load();
-    return (expected_value == curr->val && expected_mark == curr->marked &&
-            ((new_value == curr->val && new_mark == curr->marked) ||                                 // if already equal, return true by shortcircuiting
-             marked_ref.compare_exchange_strong(curr, new MarkableReference(new_value, new_mark)))); // otherwise, attempt compare and swap
+    return ref.compare_exchange_strong(expected_ref, new_ref);
   }
 };
 
