@@ -84,10 +84,12 @@ struct AtomicMarkableReference
   // Atomically sets the value of both the reference and mark to the given
   // update values if the current reference is equal to the expected reference
   // and the current mark is equal to the expected mark. returns true on success
-  bool compare_and_swap(MarkableReference<T> &expected_ref,
-                        MarkableReference<T> new_ref)
+  bool compare_and_swap(T expected_value, bool expected_mark, T new_value, bool new_mark)
   {
-    return ref.compare_exchange_strong(expected_ref, new_ref);
+    MarkableReference<T> curr = ref.load();
+    return (expected_value == curr.getRef() && expected_mark == curr.getMark() &&
+            ((new_value == curr.getRef() && new_mark == curr.getMark()) ||                       // if already equal, return true by shortcircuiting
+             ref.compare_exchange_strong(curr, MarkableReference<T>(new_value, new_mark)))); // otherwise, attempt compare and swap
   }
 };
 
@@ -115,14 +117,14 @@ private:
     {
       intialize_forward(forward_size, forward_target);
     }
-    ~SkipNode() { delete forward; }
+    ~SkipNode() {}
 
     void intialize_forward(const int forward_size, SkipNode *forward_target)
     {
       forward.reserve(forward_size);
       for (auto i = 0; i != forward_size; ++i)
       {
-        std::atomic<MarkableReference<SkipNode *>> temp{
+        AtomicMarkableReference<SkipNode *> temp{
             MarkableReference<SkipNode *>(forward_target, false)};
         forward.push_back(temp);
       }
@@ -141,7 +143,11 @@ private:
 
 public:
   SkipList();
-  ~SkipList(){};
+  ~SkipList()
+  {
+    delete head;
+    delete NIL;
+  };
 
   ValueType *search(const KeyType search_key) const;
   bool find(const KeyType search_key, SkipNode **preds, SkipNode **succs); // not const, will delete marked nodes
@@ -210,8 +216,7 @@ RETRY:
       succ = curr->forward[level].get(marked);
       while (marked)
       {
-        auto curr_expected = MarkableReference<SkipNode *>(curr, false);
-        snip = pred->forward[level].compare_and_swap(curr_expected, MarkableReference<SkipNode *>(succ, false));
+        snip = pred->forward[level].compare_and_swap(curr, false, succ, false);
         if (!snip)
           goto RETRY; // CAS failed, try again
         curr = pred->forward[level].get_reference();
@@ -254,8 +259,8 @@ SKIPLIST_TEMPLATE_ARGS
 void SKIPLIST_TYPE::insert(const KeyType key, const ValueType &val)
 {
   int top_level = random_level();
-  auto preds = new SkipNode *[max_levels];
-  auto succs = new SkipNode *[max_levels];
+  auto preds = new SkipNode *[max_levels + 1];
+  auto succs = new SkipNode *[max_levels + 1];
   while (true)
   {
     bool found = find(key, preds, succs);
@@ -267,7 +272,7 @@ void SKIPLIST_TYPE::insert(const KeyType key, const ValueType &val)
     else
     {
       auto new_node = new SkipNode(key, val, top_level);
-      for (auto level = 0; level <= top_level; ++level)
+      for (auto level = 0; level < top_level; ++level)
       {
         auto succ = succs[level];
         new_node->forward[level].set(succ, false);
@@ -275,23 +280,23 @@ void SKIPLIST_TYPE::insert(const KeyType key, const ValueType &val)
       auto pred = preds[0];
       auto succ = succs[0];
       new_node->forward[0].set(succ, false);
-      auto succ_ref = MarkableReference<SkipNode *>(pred->forward[0].get_reference(), false);
-      if (!pred->forward[0].compare_and_swap(succ_ref, MarkableReference<SkipNode *>(new_node, false)))
+      if (!pred->forward[0].compare_and_swap(pred->forward[0].get_reference(), false, new_node, false))
       {
         continue; // CAS failed, try again
       }
-      for (auto level = 1; level <= top_level; ++level)
+      for (auto level = 0; level < top_level; ++level)
       {
         while (true)
         {
           pred = preds[level];
           succ = succs[level];
-          auto succ_ref = MarkableReference<SkipNode *>(succ, false);
-          if (pred->forward[level].compare_and_swap(succ_ref, MarkableReference<SkipNode *>(new_node, false)))
+          if (pred->forward[level].compare_and_swap(succ, false, new_node, false))
             break;
           find(key, preds, succs); // CAS failed for upper level, search node to update preds and succs
         }
       }
+      delete preds;
+      delete succs;
       return;
     }
   }
