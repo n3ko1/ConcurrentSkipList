@@ -3,20 +3,12 @@
 
 int main()
 {
-    SkipList<double, std::string> l = SkipList<double, std::string>();
+    SkipList<int, std::string> l = SkipList<int, std::string>();
+    l.print(std::cout);
     l.insert(1, "Hello");
-    l.insert(2, "world.");
-    l.insert(4, "Whatever.");
-    l.print(std::cout);
-    l.remove(2);
-    l.print(std::cout);
-
-    SkipList<double, float> l2 = SkipList<double, float>();
-    l2.insert(1, 5.5);
-    l2.insert(2, 3.2);
-    l2.insert(4, 6);
-    l2.print(std::cout);
-    l2.remove(2);
-    l2.print(std::cout);
+    // l.insert(2, "world.");
+    // l.insert(4, "Whatever.");
+     l.print(std::cout);
+    // l.print(std::cout);
     return 0;
 }

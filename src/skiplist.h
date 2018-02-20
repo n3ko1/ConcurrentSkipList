@@ -111,7 +111,7 @@ private:
     }
 
     // Constructor for sentinel nodes head and NIL
-    SkipNode(const KeyType k, const int forward_size, SkipNode *forward_target) : key(k), value(nullptr), top_level(forward_size)
+    SkipNode(const KeyType k, const int forward_size, SkipNode *forward_target) : key(k), top_level(forward_size)
     {
       intialize_forward(forward_size, forward_target);
     }
@@ -122,7 +122,7 @@ private:
       forward.reserve(forward_size);
       for (auto i = 0; i != forward_size; ++i)
       {
-        std::atomic<MarkableReference<SubTest *>> temp{
+        std::atomic<MarkableReference<SkipNode *>> temp{
             MarkableReference<SkipNode *>(forward_target, false)};
         forward.push_back(temp);
       }
@@ -163,8 +163,8 @@ private:
 SKIPLIST_TEMPLATE_ARGS
 SKIPLIST_TYPE::SkipList() : probability(0.5)
 {
-  NIL = new SkipNode(std::numeric_limits<KeyType>::max(), max_levels, nullptr);
-  head = new SkipNode(std::numeric_limits<KeyType>::min(), max_levels, NIL);
+  NIL = new SkipNode(std::numeric_limits<KeyType>::max(), max_levels + 1, nullptr);
+  head = new SkipNode(std::numeric_limits<KeyType>::min(), max_levels + 1, NIL);
 }
 
 // TODO optimize http://ticki.github.io/blog/skip-lists-done-right/
@@ -186,8 +186,8 @@ void SKIPLIST_TYPE::print(std::ostream &os) const
   auto x = head;
   while (x->forward[0].get_reference()->key != std::numeric_limits<KeyType>::max())
   {
-    x = x->forward[0]; // traverse to the right
-    os << "Key: " << x.get_reference()->key << " Value: " << x.get_reference()->value << " Level: " << x.get_reference()->node_level() << std::endl;
+    x = x->forward[0].get_reference(); // traverse to the right
+    os << "Key: " << x->key << " Value: " << x->value << " Level: " << x->top_level << std::endl;
   }
 }
 
@@ -197,7 +197,7 @@ bool SKIPLIST_TYPE::find(const KeyType search_key, SkipNode **preds, SkipNode **
   bool marked = false;
   bool snip;
 
-  SkipNode *pred, curr, succ;
+  SkipNode *pred, *curr, *succ;
 
 RETRY:
   pred = head;
@@ -210,7 +210,8 @@ RETRY:
       succ = curr->forward[level].get(marked);
       while (marked)
       {
-        snip = pred->forward[level].compare_and_swap(curr, succ, false, false);
+        auto curr_expected = MarkableReference<SkipNode *>(curr, false);
+        snip = pred->forward[level].compare_and_swap(curr_expected, MarkableReference<SkipNode *>(succ, false));
         if (!snip)
           goto RETRY; // CAS failed, try again
         curr = pred->forward[level].get_reference();
@@ -229,7 +230,7 @@ RETRY:
     preds[level] = pred;
     succs[level] = curr;
   }
-  return (curr.key == search_key);
+  return (curr->key == search_key);
 }
 
 SKIPLIST_TEMPLATE_ARGS
@@ -237,16 +238,16 @@ ValueType *SKIPLIST_TYPE::search(const KeyType search_key) const
 {
   auto x = head;
   // traverse from top of head. Forward size of head is list level
-  for (int i = head->node_level() - 1; i >= 0; --i)
+  for (int i = head.get_reference()->node_level() - 1; i >= 0; --i)
   {
-    while (x->forward[i] && x->forward[i]->key < search_key)
+    while (x->forward[i].get_reference() && x->forward[i].get_reference()->key < search_key)
     {
       x = x->forward[i]; // traverse to the right
     }
   }
 
   x = x->forward[0];
-  return (x->key == search_key ? &x->value : nullptr);
+  return (x.get_reference()->key == search_key ? &x.get_reference()->value : nullptr);
 }
 
 SKIPLIST_TEMPLATE_ARGS
@@ -272,9 +273,10 @@ void SKIPLIST_TYPE::insert(const KeyType key, const ValueType &val)
         new_node->forward[level].set(succ, false);
       }
       auto pred = preds[0];
-      auto succ = preds[0];
+      auto succ = succs[0];
       new_node->forward[0].set(succ, false);
-      if (!pred->forward[0].compare_and_swap(succ, new_node, false, false))
+      auto succ_ref = MarkableReference<SkipNode *>(pred->forward[0].get_reference(), false);
+      if (!pred->forward[0].compare_and_swap(succ_ref, MarkableReference<SkipNode *>(new_node, false)))
       {
         continue; // CAS failed, try again
       }
@@ -284,7 +286,8 @@ void SKIPLIST_TYPE::insert(const KeyType key, const ValueType &val)
         {
           pred = preds[level];
           succ = succs[level];
-          if (pred->forward[level].compare_and_swap(succ, new_node, false, false))
+          auto succ_ref = MarkableReference<SkipNode *>(succ, false);
+          if (pred->forward[level].compare_and_swap(succ_ref, MarkableReference<SkipNode *>(new_node, false)))
             break;
           find(key, preds, succs); // CAS failed for upper level, search node to update preds and succs
         }
@@ -297,30 +300,30 @@ void SKIPLIST_TYPE::insert(const KeyType key, const ValueType &val)
 SKIPLIST_TEMPLATE_ARGS
 void SKIPLIST_TYPE::remove(const KeyType key)
 {
-  auto x = head;
-  auto update = new SkipNode *[max_levels];
+  // auto x = head;
+  // auto update = new SkipNode *[max_levels];
 
-  // traverse from top of head. Forward size of head is list level
-  for (int i = head->node_level() - 1; i >= 0; --i)
-  {
-    while (x->forward[i] && x->forward[i]->key < key)
-    {
-      x = x->forward[i]; // traverse to the right
-    }
-    update[i] = x; // store last forward pointer
-  }
-  x = x->forward[0];
-  if (x->key == key)
-  {
-    for (int i = 0; i != head->node_level() - 1; ++i)
-    {
-      if (update[i]->forward[i] != x)
-        break;
-      update[i]->forward[i] = x->forward[i];
-    }
-    x = nullptr;
-  }
-  delete update;
+  // // traverse from top of head. Forward size of head is list level
+  // for (int i = head->node_level() - 1; i >= 0; --i)
+  // {
+  //   while (x->forward[i] && x->forward[i]->key < key)
+  //   {
+  //     x = x->forward[i]; // traverse to the right
+  //   }
+  //   update[i] = x; // store last forward pointer
+  // }
+  // x = x->forward[0];
+  // if (x->key == key)
+  // {
+  //   for (int i = 0; i != head->node_level() - 1; ++i)
+  //   {
+  //     if (update[i]->forward[i] != x)
+  //       break;
+  //     update[i]->forward[i] = x->forward[i];
+  //   }
+  //   x = nullptr;
+  // }
+  // delete update;
   return;
 }
 
