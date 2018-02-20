@@ -1,13 +1,15 @@
 #include "skiplist.h"
 #include "mingw.thread.h"
 #include <iostream>
+#include <assert.h>
 
 constexpr int THREAD_COUNT = 4;
 constexpr int ROUNDS = 10;
 
 std::atomic<int> id(0);
 
-int create_id() {
+int create_id()
+{
     return id++;
 }
 
@@ -34,8 +36,12 @@ int main()
             {
                 tA[i].join();
             }
+
+            // at this point, exactly THREAD_COUNT inserts should have happened
+            int size = l.size();
+            assert(size % THREAD_COUNT == 0);
         }
-        //l.print(std::cout);
+
         std::cout << std::endl
                   << l.size();
     }
