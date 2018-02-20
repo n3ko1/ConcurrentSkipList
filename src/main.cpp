@@ -1,5 +1,4 @@
 #include "skiplist.h"
-#include "mingw.thread.h"
 #include <iostream>
 
 constexpr int THREAD_COUNT = 4;
