@@ -88,6 +88,8 @@ void run_simple_test()
     assert(l.size() == 5);
     l.insert(7, "this triggered GC.");
     assert(l.size() == 6);
+    assert(*l.find_wait_free(3) == "This");
+    assert(l.find_wait_free(1337) == nullptr);
 }
 
 int main()

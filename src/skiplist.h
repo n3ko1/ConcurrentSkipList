@@ -19,8 +19,7 @@ struct MarkableReference
   MarkableReference(T *value, bool mark) : val(value), marked(mark) {}
 };
 
-// Atomic wrapper for MarkableReference type, implementing copy constructor for use in container types
-// ATTENTION: copy construction is NOT atomic!
+// Atomic wrapper for MarkableReference type
 template <typename T>
 struct AtomicMarkableReference
 {
@@ -118,8 +117,6 @@ private:
 
     // Vector of atomic, markable (logical delete) forward nodes
     std::vector<AtomicMarkableReference<SkipNode>> forward;
-
-    int node_level() const;
   };
 
 public:
@@ -130,8 +127,8 @@ public:
     delete NIL;
   };
 
-  ValueType *search(const KeyType search_key) const;
-  bool find(const KeyType search_key, SkipNode **preds, SkipNode **succs); // not const, will delete marked nodes
+  ValueType *find_wait_free(const KeyType search_key) const;
+  bool find_with_gc(const KeyType search_key, SkipNode **preds, SkipNode **succs); // not const, will delete marked nodes
 
   void insert(const KeyType key, const ValueType &val);
   bool remove(const KeyType key);
@@ -199,13 +196,14 @@ uint32_t SKIPLIST_TYPE::size() const
   while (x->forward[0].get_reference()->key != std::numeric_limits<KeyType>::max())
   {
     x = x->forward[0].get(marked); // traverse to the right
-    if(!marked) ++size;
+    if (!marked)
+      ++size;
   }
   return size;
 }
 
 SKIPLIST_TEMPLATE_ARGS
-bool SKIPLIST_TYPE::find(const KeyType search_key, SkipNode **preds, SkipNode **succs)
+bool SKIPLIST_TYPE::find_with_gc(const KeyType search_key, SkipNode **preds, SkipNode **succs)
 {
   bool marked = false;
   bool snip;
@@ -246,20 +244,34 @@ RETRY:
 }
 
 SKIPLIST_TEMPLATE_ARGS
-ValueType *SKIPLIST_TYPE::search(const KeyType search_key) const
+ValueType *SKIPLIST_TYPE::find_wait_free(const KeyType search_key) const
 {
-  auto x = head;
-  // traverse from top of head. Forward size of head is list level
-  for (int i = head.get_reference()->node_level() - 1; i >= 0; --i)
+  bool marked = false;
+  SkipNode *pred = head, *curr = nullptr, *succ = nullptr;
+  // traverse from top of head
+  for (int level = max_levels; level >= 0; --level)
   {
-    while (x->forward[i].get_reference() && x->forward[i].get_reference()->key < search_key)
+    curr = pred->forward[level].get_reference();
+    while (true)
     {
-      x = x->forward[i]; // traverse to the right
+      succ = curr->forward[level].get(marked);
+      while (marked)
+      { // skip over marked nodes
+        curr = pred->forward[level].get_reference();
+        succ = curr->forward[level].get(marked);
+      }
+      if (curr->key < search_key)
+      {
+        pred = curr;
+        curr = succ;
+      }
+      else
+      {
+        break;
+      }
     }
   }
-
-  x = x->forward[0];
-  return (x.get_reference()->key == search_key ? &x.get_reference()->value : nullptr);
+  return (curr->key == search_key ? &curr->value : nullptr);
 }
 
 SKIPLIST_TEMPLATE_ARGS
@@ -271,7 +283,7 @@ void SKIPLIST_TYPE::insert(const KeyType key, const ValueType &val)
   auto new_node = new SkipNode(key, val, top_level);
   while (true)
   {
-    bool found = find(key, preds, succs);
+    bool found = find_with_gc(key, preds, succs);
     if (found)
     {
       delete new_node;
@@ -301,7 +313,7 @@ void SKIPLIST_TYPE::insert(const KeyType key, const ValueType &val)
           succ = succs[level];
           if (pred->forward[level].compare_and_swap(succ, false, new_node, false))
             break;
-          find(key, preds, succs); // CAS failed for upper level, search node to update preds and succs
+          find_with_gc(key, preds, succs); // CAS failed for upper level, search node to update preds and succs
         }
       }
       delete preds;
@@ -319,7 +331,7 @@ bool SKIPLIST_TYPE::remove(const KeyType key)
   SkipNode *succ;
   while (true)
   {
-    bool found = find(key, preds, succs);
+    bool found = find_with_gc(key, preds, succs);
     if (!found)
     {
       return false; // nothing to delete
