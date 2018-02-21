@@ -247,18 +247,19 @@ void SKIPLIST_TYPE::insert(const KeyType key, const ValueType &val)
   int top_level = random_level();
   auto preds = new SkipNode *[max_levels + 1];
   auto succs = new SkipNode *[max_levels + 1];
+  auto new_node = new SkipNode(key, val, top_level);
   while (true)
   {
     bool found = find(key, preds, succs);
     if (found)
     {
+      delete new_node;
       delete preds;
       delete succs;
       return;
     }
     else
     {
-      auto new_node = new SkipNode(key, val, top_level);
       for (auto level = 0; level < top_level; ++level)
       {
         auto succ = succs[level];
@@ -269,7 +270,6 @@ void SKIPLIST_TYPE::insert(const KeyType key, const ValueType &val)
       new_node->forward[0].set(succ, false);
       if (!pred->forward[0].compare_and_swap(succ, false, new_node, false))
       {
-        delete new_node;
         continue; // CAS failed, try again
       }
       for (auto level = 0; level < top_level; ++level)
