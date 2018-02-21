@@ -55,6 +55,15 @@ struct AtomicMarkableReference
     }
   }
 
+  void set_marked(bool mark)
+  {
+    MarkableReference<T> *curr = ref.load();
+    if (mark != curr->marked)
+    {
+      ref.store(new MarkableReference<T>(curr->val, mark));
+    }
+  }
+
   // Atomically sets the value of both the reference and mark to the given
   // update values if the current reference is equal to the expected reference
   // and the current mark is equal to the expected mark. returns true on success
@@ -125,7 +134,7 @@ public:
   bool find(const KeyType search_key, SkipNode **preds, SkipNode **succs); // not const, will delete marked nodes
 
   void insert(const KeyType key, const ValueType &val);
-  void remove(const KeyType key);
+  bool remove(const KeyType key);
 
   void print(std::ostream &os) const;
   uint32_t size() const;
@@ -162,11 +171,22 @@ int SKIPLIST_TYPE::random_level() const
 SKIPLIST_TEMPLATE_ARGS
 void SKIPLIST_TYPE::print(std::ostream &os) const
 {
-  auto x = head;
-  while (x->forward[0].get_reference()->key != std::numeric_limits<KeyType>::max())
+  bool marked = false;
+  auto x = head->forward[0].get(marked);
+  auto succ = x;
+  while (succ->key != std::numeric_limits<KeyType>::max())
   {
-    x = x->forward[0].get_reference(); // traverse to the right
-    os << "Key: " << x->key << " Value: " << x->value << " Level: " << x->top_level << std::endl;
+    // traverse to the right
+    x = succ;
+    succ = succ->forward[0].get(marked);
+    if (!marked)
+    {
+      os << "Key: " << x->key << " Value: " << x->value << " Level: " << x->top_level << std::endl;
+    }
+    else
+    {
+      os << "DELETED Key: " << x->key << " Value: " << x->value << " Level: " << x->top_level << std::endl;
+    }
   }
 }
 
@@ -175,10 +195,11 @@ uint32_t SKIPLIST_TYPE::size() const
 {
   auto x = head;
   uint32_t size = 0;
+  bool marked = false;
   while (x->forward[0].get_reference()->key != std::numeric_limits<KeyType>::max())
   {
-    x = x->forward[0].get_reference(); // traverse to the right
-    ++size;
+    x = x->forward[0].get(marked); // traverse to the right
+    if(!marked) ++size;
   }
   return size;
 }
@@ -291,33 +312,53 @@ void SKIPLIST_TYPE::insert(const KeyType key, const ValueType &val)
 }
 
 SKIPLIST_TEMPLATE_ARGS
-void SKIPLIST_TYPE::remove(const KeyType key)
+bool SKIPLIST_TYPE::remove(const KeyType key)
 {
-  // auto x = head;
-  // auto update = new SkipNode *[max_levels];
+  auto preds = new SkipNode *[max_levels + 1];
+  auto succs = new SkipNode *[max_levels + 1];
+  SkipNode *succ;
+  while (true)
+  {
+    bool found = find(key, preds, succs);
+    if (!found)
+    {
+      return false; // nothing to delete
+    }
+    else
+    {
+      auto node_to_remove = succs[0];
 
-  // // traverse from top of head. Forward size of head is list level
-  // for (int i = head->node_level() - 1; i >= 0; --i)
-  // {
-  //   while (x->forward[i] && x->forward[i]->key < key)
-  //   {
-  //     x = x->forward[i]; // traverse to the right
-  //   }
-  //   update[i] = x; // store last forward pointer
-  // }
-  // x = x->forward[0];
-  // if (x->key == key)
-  // {
-  //   for (int i = 0; i != head->node_level() - 1; ++i)
-  //   {
-  //     if (update[i]->forward[i] != x)
-  //       break;
-  //     update[i]->forward[i] = x->forward[i];
-  //   }
-  //   x = nullptr;
-  // }
-  // delete update;
-  return;
+      // mark as deleted on higher levels
+      bool marked = false;
+      for (auto level = node_to_remove->top_level - 1; level >= 1; --level)
+      {
+        succ = node_to_remove->forward[level].get(marked);
+        while (!marked)
+        {
+          node_to_remove->forward[level].set_marked(true);
+          succ = node_to_remove->forward[level].get(marked);
+        }
+      }
+
+      // bottom level
+      marked = false;
+      succ = node_to_remove->forward[0].get(marked);
+      while (true)
+      {
+        bool success = node_to_remove->forward[0].compare_and_swap(succ, false, succ, true);
+        succ = node_to_remove->forward[0].get(marked);
+        if (success)
+        { // this thread marked the node
+          // TODO we might call find here to physically remove nodes
+          return true;
+        }
+        else if (marked)
+        { // another thread already deleted the node
+          return false;
+        }
+      }
+    }
+  }
 }
 
 #endif

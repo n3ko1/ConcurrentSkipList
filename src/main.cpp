@@ -1,21 +1,39 @@
 #include "skiplist.h"
 #include "mingw.thread.h"
 #include <iostream>
+#include <list>
 #include <assert.h>
+#include <algorithm>
 
-constexpr int THREAD_COUNT = 32;
-constexpr int ROUNDS = 100;
+constexpr int THREAD_COUNT = 8;
+constexpr int ROUNDS = 10;
+constexpr int ITERATIONS = 100;
 
 std::atomic<int> id(0);
+std::atomic<int> deletion_count(0);
 
 int create_id()
 {
     return id++;
 }
 
-void run(SkipList<int, std::string> &l)
+void runInsert(SkipList<int, std::string> &l)
 {
-    l.insert(create_id(), "");
+    for (auto j = 0; j != ITERATIONS; ++j)
+    {
+        l.insert(create_id(), "");
+    }
+}
+
+void runRemove(SkipList<int, std::string> &l)
+{
+    for (auto j = 0; j != ITERATIONS; ++j)
+    {
+        if (l.remove(id.load()))
+        {
+            deletion_count++;
+        }
+    }
 }
 
 void run_threaded_test()
@@ -23,27 +41,35 @@ void run_threaded_test()
     for (auto x = 0; x != ROUNDS; ++x)
     {
         SkipList<int, std::string> l = SkipList<int, std::string>();
-        std::thread tA[THREAD_COUNT];
-        for (auto j = 0; j != 100; ++j)
+        std::thread tAdd[THREAD_COUNT];
+        std::thread tRemove[THREAD_COUNT];
+        std::list<int> remove_idx{};
+        deletion_count.store(0);
+
+        for (auto i = 0; i != THREAD_COUNT; ++i)
         {
-            for (auto i = 0; i != THREAD_COUNT; ++i)
-            {
-                //std::cout << num << std::endl;
-                tA[i] = std::thread(run, l);
-            }
 
-            for (auto i = 0; i != THREAD_COUNT; ++i)
+            tAdd[i] = std::thread(runInsert, l);
+            if (rand() % 2 == 0)
             {
-                tA[i].join();
+                tRemove[i] = std::thread(runRemove, l);
+                remove_idx.push_back(i);
             }
-
-            // at this point, exactly THREAD_COUNT inserts should have happened
-            int size = l.size();
-            assert(size % THREAD_COUNT == 0);
         }
 
-        std::cout << std::endl
-                  << l.size();
+        for (auto i = 0; i != THREAD_COUNT; ++i)
+        {
+            tAdd[i].join();
+            if (std::find(remove_idx.begin(), remove_idx.end(), i) != remove_idx.end())
+                tRemove[i].join();
+        }
+
+        // at this point, size should be insertions - deletions
+        int size = l.size();
+        std::cout << "Size: " << size << std::endl;
+        std::cout << "Insertions: " << THREAD_COUNT * ITERATIONS << std::endl;
+        std::cout << "Deletions: " << deletion_count << std::endl;
+        assert(size == ((THREAD_COUNT * ITERATIONS) - deletion_count));
     }
 }
 
@@ -57,7 +83,11 @@ void run_simple_test()
     l.insert(4, "is");
     l.insert(5, "a");
     l.insert(6, "test");
-    l.print(std::cout);
+    assert(l.size() == 6);
+    l.remove(5);
+    assert(l.size() == 5);
+    l.insert(7, "this triggered GC.");
+    assert(l.size() == 6);
 }
 
 int main()
