@@ -50,7 +50,7 @@ void run_threaded_test()
         {
 
             tAdd[i] = std::thread(runInsert, l);
-            if (rand() % 2 == 0)
+            if (i % 2 == 0)
             {
                 tRemove[i] = std::thread(runRemove, l);
                 remove_idx.push_back(i);

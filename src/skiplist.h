@@ -35,6 +35,12 @@ struct AtomicMarkableReference
     ref.store(new MarkableReference<T>(val, marked));
   }
 
+  ~AtomicMarkableReference()
+  {
+    MarkableReference<T> *temp = ref.load();
+    delete temp;
+  }
+
   T *get_reference() { return ref.load()->val; }
 
   // Stores the value of this references marked flag in reference
@@ -99,7 +105,10 @@ private:
     {
       intialize_forward(forward_size, forward_target);
     }
-    ~SkipNode() {}
+    ~SkipNode()
+    {
+      forward.clear(); // calls destructors on AtomicMarkableReferences
+    }
 
     void intialize_forward(const int forward_size, SkipNode *forward_target)
     {
@@ -278,8 +287,8 @@ SKIPLIST_TEMPLATE_ARGS
 void SKIPLIST_TYPE::insert(const KeyType key, const ValueType &val)
 {
   int top_level = random_level();
-  auto preds = new SkipNode *[max_levels + 1];
-  auto succs = new SkipNode *[max_levels + 1];
+  SkipNode *preds[max_levels + 1];
+  SkipNode *succs[max_levels + 1];
   auto new_node = new SkipNode(key, val, top_level);
   while (true)
   {
@@ -287,8 +296,6 @@ void SKIPLIST_TYPE::insert(const KeyType key, const ValueType &val)
     if (found)
     {
       delete new_node;
-      delete preds;
-      delete succs;
       return;
     }
     else
@@ -316,8 +323,6 @@ void SKIPLIST_TYPE::insert(const KeyType key, const ValueType &val)
           find_with_gc(key, preds, succs); // CAS failed for upper level, search node to update preds and succs
         }
       }
-      delete preds;
-      delete succs;
       return;
     }
   }
@@ -326,16 +331,14 @@ void SKIPLIST_TYPE::insert(const KeyType key, const ValueType &val)
 SKIPLIST_TEMPLATE_ARGS
 bool SKIPLIST_TYPE::remove(const KeyType key)
 {
-  auto preds = new SkipNode *[max_levels + 1];
-  auto succs = new SkipNode *[max_levels + 1];
+  SkipNode *preds[max_levels + 1];
+  SkipNode *succs[max_levels + 1];
   SkipNode *succ;
   while (true)
   {
     bool found = find_with_gc(key, preds, succs);
     if (!found)
     {
-      delete preds;
-      delete succs;
       return false; // nothing to delete
     }
     else
@@ -364,14 +367,10 @@ bool SKIPLIST_TYPE::remove(const KeyType key)
         if (success)
         { // this thread marked the node
           // TODO we might call find here to physically remove nodes
-          delete preds;
-          delete succs;
           return true;
         }
         else if (marked)
         { // another thread already deleted the node
-          delete preds;
-          delete succs;
           return false;
         }
       }
