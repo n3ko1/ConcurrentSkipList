@@ -1,8 +1,8 @@
 # ConcurrentSkipList
 
-This is a generic, highly concurrent, lock-free implementation of the Skip List data structure as presented in (https://www.amazon.de/Art-Multiprocessor-Programming-Revised-Reprint/dp/0123973376)[The Art of Multiprocessor Programming, Herlihy & Shavit].
+This is a generic, highly concurrent, lock-free implementation of the Skip List data structure as presented in [The Art of Multiprocessor Programming by Herlihy & Shavit](https://www.amazon.de/Art-Multiprocessor-Programming-Revised-Reprint/dp/0123973376).
 
-See usage examples in the main.cpp file.
+See usage examples in the [main.cpp](src/main.cpp) file.
 
 # Licence
 
