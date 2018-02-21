@@ -334,6 +334,8 @@ bool SKIPLIST_TYPE::remove(const KeyType key)
     bool found = find_with_gc(key, preds, succs);
     if (!found)
     {
+      delete preds;
+      delete succs;
       return false; // nothing to delete
     }
     else
@@ -362,10 +364,14 @@ bool SKIPLIST_TYPE::remove(const KeyType key)
         if (success)
         { // this thread marked the node
           // TODO we might call find here to physically remove nodes
+          delete preds;
+          delete succs;
           return true;
         }
         else if (marked)
         { // another thread already deleted the node
+          delete preds;
+          delete succs;
           return false;
         }
       }
