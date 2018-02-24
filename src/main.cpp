@@ -5,8 +5,8 @@
 #include <assert.h>
 #include <algorithm>
 
-constexpr int THREAD_COUNT = 8;
-constexpr int ROUNDS = 10;
+constexpr int THREAD_COUNT = 128;
+constexpr int ROUNDS = 100;
 constexpr int ITERATIONS = 100;
 
 std::atomic<int> id(0);
@@ -27,9 +27,9 @@ void runInsert(SkipList<int, std::string> &l)
 
 void runRemove(SkipList<int, std::string> &l)
 {
-    for (auto j = 0; j != ITERATIONS; ++j)
+    for (auto j = 0; j != ITERATIONS * ITERATIONS; ++j)
     {
-        if (l.remove(id.load()))
+        if (l.remove(rand()))
         {
             deletion_count++;
         }
@@ -43,25 +43,20 @@ void run_threaded_test()
         SkipList<int, std::string> l = SkipList<int, std::string>();
         std::thread tAdd[THREAD_COUNT];
         std::thread tRemove[THREAD_COUNT];
-        std::list<int> remove_idx{};
         deletion_count.store(0);
+        id.store(0);
 
         for (auto i = 0; i != THREAD_COUNT; ++i)
         {
 
             tAdd[i] = std::thread(runInsert, l);
-            if (i % 2 == 0)
-            {
-                tRemove[i] = std::thread(runRemove, l);
-                remove_idx.push_back(i);
-            }
+            tRemove[i] = std::thread(runRemove, l);
         }
 
         for (auto i = 0; i != THREAD_COUNT; ++i)
         {
             tAdd[i].join();
-            if (std::find(remove_idx.begin(), remove_idx.end(), i) != remove_idx.end())
-                tRemove[i].join();
+            tRemove[i].join();
         }
 
         // at this point, size should be insertions - deletions

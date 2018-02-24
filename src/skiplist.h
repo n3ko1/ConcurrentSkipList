@@ -347,7 +347,7 @@ bool SKIPLIST_TYPE::remove(const KeyType key)
 
       // mark as deleted on higher levels
       bool marked = false;
-      for (auto level = node_to_remove->top_level - 1; level >= 1; --level)
+      for (auto level = node_to_remove->top_level-1; level >= 1; --level)
       {
         succ = node_to_remove->forward[level].get(marked);
         while (!marked)
@@ -363,10 +363,11 @@ bool SKIPLIST_TYPE::remove(const KeyType key)
       while (true)
       {
         bool success = node_to_remove->forward[0].compare_and_swap(succ, false, succ, true);
-        succ = node_to_remove->forward[0].get(marked);
+        succ = succs[0]->forward[0].get(marked);
         if (success)
         { // this thread marked the node
           // TODO we might call find here to physically remove nodes
+          find_with_gc(key, preds, succs);
           return true;
         }
         else if (marked)
