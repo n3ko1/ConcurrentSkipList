@@ -367,7 +367,7 @@ bool SKIPLIST_TYPE::remove(const KeyType key)
         if (success)
         { // this thread marked the node
           // TODO we might call find here to physically remove nodes
-          find_with_gc(key, preds, succs);
+          // find_with_gc(key, preds, succs);
           return true;
         }
         else if (marked)
