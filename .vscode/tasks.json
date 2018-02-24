@@ -11,6 +11,7 @@
                 "-pedantic",
                 "-Wall",
                 "-march=x86-64",
+                "-static-libstdc++",
                 "-g",
                 "src/main.cpp",
                 "-o",
