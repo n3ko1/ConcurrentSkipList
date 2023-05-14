@@ -349,12 +349,7 @@ bool SKIPLIST_TYPE::remove(const KeyType key)
       bool marked = false;
       for (auto level = node_to_remove->top_level-1; level >= 1; --level)
       {
-        succ = node_to_remove->forward[level].get(marked);
-        while (!marked)
-        {
-          node_to_remove->forward[level].set_marked(true);
-          succ = node_to_remove->forward[level].get(marked);
-        }
+        node_to_remove->forward[level].set_marked(true);        
       }
 
       // bottom level
